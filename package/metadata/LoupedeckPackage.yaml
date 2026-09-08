@@ -1,0 +1,13 @@
+type: plugin4
+name: NeonDeck
+version: 0.1.0
+displayName: Neon Deck
+description: AI-native starter deck for MX Creative Keypad - Claude on a key, theme flip, focus mode, pomodoro, dev cockpit, system pulse.
+author: k12cl
+minimumLoupedeckVersion: 6.1
+
+pluginType: remote
+pluginRuntime: nodejs
+entryPoint: index.mjs
+
+pluginCapabilities:

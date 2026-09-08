@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<text x="14" y="46" font-family="Segoe UI, Tahoma, sans-serif" font-size="34" font-weight="700" fill="#B6FF00">ก</text>
+<text x="50" y="82" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700" fill="#00F0FF">A</text>
+<path d="M50 30h24l-7-7M74 30l-7 7" stroke="#B6FF00" stroke-width="5"/>
+<path d="M46 66H22l7 7M22 66l7-7" stroke="#00F0FF" stroke-width="5"/>
+</svg>

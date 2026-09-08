@@ -1,0 +1,18 @@
+# Node edition
+node_modules/
+dist/
+*.lplug4
+
+# C# edition
+NeonDeckPlugin/bin/
+NeonDeckPlugin/obj/
+NeonDeckPlugin/.vs/
+*.csproj.user
+*.suo
+
+# personal Options+ profile backups (device layout of one machine)
+NeonDeckPlugin/profile-backup-*/
+
+# OS / editor
+Thumbs.db
+.DS_Store

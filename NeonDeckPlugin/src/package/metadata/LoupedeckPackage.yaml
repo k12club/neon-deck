@@ -1,0 +1,20 @@
+type: plugin4
+name: NeonDeck
+displayName: Neon Deck
+description: AI-native starter deck for the MX Creative Keypad. Live key faces - Claude on a key, theme flip, focus mode, Pomodoro countdown, dev cockpit, system pulse meters.
+pluginFileName: NeonDeckPlugin.dll
+version: 0.3.0
+author: k12cl
+copyright: Copyright © 2026 k12cl. All rights reserved.
+
+pluginFolderWin: bin
+
+supportedDevices:
+    - LoupedeckCtFamily
+
+pluginCapabilities:
+
+minimumLoupedeckVersion: 6.0
+
+license: MIT
+licenseUrl: https://opensource.org/licenses/MIT
