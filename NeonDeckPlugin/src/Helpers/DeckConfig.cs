@@ -31,6 +31,10 @@ namespace Loupedeck.NeonDeckPlugin
         [JsonPropertyName("discordMuteHotkey")]
         public String DiscordMuteHotkey { get; set; } = "";
 
+        /// <summary>Path to codex.exe for the live Codex quota. Empty = auto-detect (Codex installer folder, PATH, npm global).</summary>
+        [JsonPropertyName("codexExe")]
+        public String CodexExe { get; set; } = "";
+
         /// <summary>Write every rendered key face to snapshots\*.png (debug aid).</summary>
         [JsonPropertyName("debugSnapshots")]
         public Boolean DebugSnapshots { get; set; } = false;

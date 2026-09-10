@@ -22,6 +22,8 @@ namespace Loupedeck.NeonDeckPlugin
         public DateTimeOffset? SecondaryResetsAt { get; set; }
         public DateTimeOffset ObservedAt { get; set; }   // when Codex logged it
         public String SourceFile { get; set; }
+        public String PlanType { get; set; }        // "plus", "pro", ... (only when asked from Codex itself)
+        public Boolean Live { get; set; }           // true = answered by codex app-server, false = read from a session log
     }
 
     internal static class CodexUsageReader

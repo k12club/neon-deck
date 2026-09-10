@@ -26,7 +26,7 @@ A [Logi Actions SDK](https://logitech.github.io/actions-sdk-docs/) plugin (C#, .
 | | | |
 |---|---|---|
 | **Ask Claude**<br>Sends the clipboard text to Claude and shows a short answer as a notification (also copied to the clipboard). Face shows thinking / ✓. | **Discord Mic**<br>Toggles Discord's own mute. No keybind setup, no focus stealing. The key stays red while muted and always matches Discord's real state. | **Pomodoro**<br>mm:ss countdown with a progress ring on the key, turns red under 5 minutes, press again to cancel. |
-| **Claude Usage**<br>Live Claude plan usage: ring + big number = 5‑hour window, label = weekly, corner = time until reset. | **Codex Usage**<br>Same meter for Codex, read from Codex's own session logs. No network. | **Claude Live**<br>Status light for Claude Code: cyan breathing = working, green DONE = your turn, amber blinking = Claude is asking you something (permission prompt or a question). Ring = context used. Press to bring the Claude terminal to the front. |
+| **Claude Usage**<br>Live Claude plan usage: ring + big number = 5‑hour window, label = weekly, corner = time until reset. | **Codex Usage**<br>Same meter for Codex. Asks Codex itself (`codex app-server`) at start‑up, every 10 minutes and on press, and follows Codex's session logs while you use it. | **Claude Live**<br>Status light for Claude Code: cyan breathing = working, green DONE = your turn, amber blinking = Claude is asking you something (permission prompt or a question). Ring = context used. Press to bring the Claude terminal to the front. |
 | **Terminal**<br>Opens Windows Terminal and VS Code in your project folder. | **Claude Code**<br>Opens a terminal and runs `claude` in the project. Clawd idles on the key: bobbing, walking in place, blinking (8 frames, 4 fps). | **Monitor**<br>CPU% ring, CPU · RAM numbers, "CPU 58° · GPU 32°" temperatures on one line in the corner. Press for disk, uptime, IP and GPU details. |
 
 Also available but not on the default page (drag them onto a key in Options+): **Theme** (toggle Windows dark/light), **Focus** (mute notifications and minimize everything but the active window), **Polish** (Claude rewrites the selected text and pastes it back), **TH ⇄ EN** (Thai ↔ English translation of the selection, pasted back).
@@ -48,7 +48,7 @@ The quota keys and Claude Live carry a small breathing dot in the top‑right co
 | Build | **.NET 10 SDK** — `winget install Microsoft.DotNet.SDK.10`. Plugin Service 6.4.1 compiles `PluginApi.dll` against .NET 10; the .NET 8 target from Logitech's docs fails with CS1705. |
 | AI keys (Ask Claude / Polish / TH ⇄ EN) | [Claude Code CLI](https://docs.anthropic.com/claude-code) signed in, `claude` on PATH |
 | Claude Usage / Claude Live | Node.js 18+ for the scripts in `tools/claude/`, configured as described in [Install › Claude Code](#3-claude-code-integration) |
-| Codex Usage | A Codex app/CLI that writes session logs to `%USERPROFILE%\.codex\sessions` |
+| Codex Usage | Codex CLI or app installed and signed in (`codex.exe` is auto‑detected; set `codexExe` in `deck.config.json` if it lives elsewhere) |
 | Monitor (CPU temperature) | [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), see [Install › LibreHardwareMonitor](#4-cpugpu-temperatures-with-librehardwaremonitor) (without it the key still shows the GPU via `nvidia-smi`) |
 | Discord Mic | Discord desktop running (nothing to configure inside Discord) |
 
@@ -93,7 +93,7 @@ Class names: `AskClaudeCommand` `DiscordMicCommand` `PomodoroCommand` `ClaudeUsa
 
 ### 3. Claude Code integration
 
-**Claude Usage** and **Claude Live** read what Claude Code already knows locally; they do not call an API themselves.
+**Claude Usage** and **Claude Live** read what Claude Code already knows locally while it is running. Claude Usage only talks to Anthropic itself when that local data is stale, typically right after boot (see below).
 
 ```powershell
 copy tools\claude\neon-statusline.js  $env:USERPROFILE\.claude\
@@ -119,7 +119,8 @@ Then add to `~/.claude/settings.json` (replace `<you>`, use forward slashes):
 - `neon-statusline.js` renders a status line at the bottom of Claude Code (`Fable 5.1 · ctx 12% · 5h 19% · wk 52%`) and mirrors `rate_limits` and `context_window` to `%LOCALAPPDATA%\NeonDeck\claude-status.json`, which **Claude Usage** polls every 15 s.
 - `neon-claude-hook.js` records each session's state (working / done / needs_input) in `%LOCALAPPDATA%\NeonDeck\claude-live.json`, which **Claude Live** polls every second. Only `permission_prompt` and `elicitation_dialog` notifications count as *needs you*; Claude Code's `idle_prompt` (\"waiting for your input\" after 60 s of silence) is treated as done/ready.
 - Claude Code picks up the settings change without a restart. Numbers appear after the first API response of a session; rate‑limit data exists for Pro/Max plans only.
-- Claude Usage falls back to Anthropic's usage endpoint only when the mirror is older than 30 minutes, at most every 15 minutes, backing off 15→30→60 minutes on HTTP 429 (that endpoint rate‑limits aggressively — do not poll it faster). The token is read from `~/.claude/.credentials.json`, sent only to `api.anthropic.com`, and never logged.
+- Claude Usage falls back to Anthropic's usage endpoint only when the mirror is older than 30 minutes, at most every 15 minutes, backing off 15→30→60 minutes on HTTP 429 (that endpoint rate‑limits aggressively — do not poll it faster). The token is read from `~/.claude/.credentials.json`, sent only to Anthropic, and never logged.
+- Claude Code's login token lives 8 hours, so after a reboot it is usually expired. The plugin then renews it the same way Claude Code does (same token endpoint, same OAuth client id) and writes the new token back to `.credentials.json`, so the key shows real numbers right after boot without opening Claude Code first. Claude Code picks the renewed token up by itself. If the renewal is refused (refresh token revoked or past its own limit) the key shows `sign in`: open Claude Code and sign in once.
 
 To remove: delete the `statusLine` key and the hook entries that point at these scripts.
 
@@ -160,6 +161,7 @@ To remove: `Unregister-ScheduledTask 'LibreHardwareMonitor (Neon Deck)'` then `w
 | `claudeModel` | Model for the AI keys; empty = CLI default, `haiku` for the fastest replies |
 | `claudeCwd` | Working directory for `claude -p` (neutral, so no project CLAUDE.md leaks into prompts) |
 | `discordMuteHotkey` | No longer used; kept for compatibility |
+| `codexExe` | Path to `codex.exe` for the live Codex quota; empty = auto‑detect (Codex installer folder, PATH, npm global) |
 | `debugSnapshots` | `true` saves every rendered face to `snapshots\*.png` and enables the dev harness (see [testing](#testing-without-the-device)) |
 
 Other files in the same folder: `state.json` (Focus flag etc.), `usage-cache.json` / `usage-backoff.txt` (Claude Usage), `claude-status.json` / `claude-live.json` (written by Claude Code), `lifecycle.log` (plugin load/unload).
@@ -200,9 +202,9 @@ Drag in Options+ or edit `ProfileInfo.json` as in [Install › Key layout](#2-ke
 | Key | File | Typical tweaks |
 |---|---|---|
 | Ask Claude / Polish / TH ⇄ EN | `Actions/AiCommands.cs` | Prompt text passed to `ClaudeCli.Ask(...)`, how long ✓ stays (`Task.Delay(20_500)`) |
-| Claude Usage | `Actions/ClaudeUsageCommand.cs` | Mirror poll `LocalPollSeconds`, fallback endpoint interval `EndpointEverySeconds` (keep ≥ 900), backoff |
+| Claude Usage | `Actions/ClaudeUsageCommand.cs`, `Helpers/ClaudeUsageClient.cs` | Mirror poll `LocalPollSeconds`, fallback endpoint interval `EndpointEverySeconds` (keep ≥ 900), backoff, token renewal margin `RenewAhead` |
 | Claude Live | `Actions/ClaudeLiveCommand.cs`, `Helpers/ClaudeLiveReader.cs` | Green glow duration `DoneGlow`, session age `SessionTtl`, terminal window regex `ClaudeTitle`, toast on needs_input |
-| Codex Usage | `Actions/CodexUsageCommand.cs`, `Helpers/CodexUsageReader.cs` | Scan interval `PollEverySeconds`, number of newest log files checked (`Take(5)`) |
+| Codex Usage | `Actions/CodexUsageCommand.cs`, `Helpers/CodexAppServerClient.cs`, `Helpers/CodexUsageReader.cs` | Live ask interval `LiveEverySeconds` / `LiveIfOlderMinutes`, log scan interval `PollEverySeconds`, number of newest log files checked (`Take(5)`) |
 | Discord Mic | `Actions/DiscordMicCommand.cs`, `Helpers/DiscordUia.cs` | Localized button names (`MuteNames`), state poll rate (`tick % 3`) |
 | Pomodoro | `Actions/WorkspaceCommands.cs` | Length from `pomodoroMinutes`, red threshold (`left.TotalMinutes < 5`) |
 | Monitor | `Actions/DevCommands.cs`, `Helpers/LhmTemps.cs` | Sensor names (`Tctl`/`Package`, `GPU Core`), temperature poll (`tick % 10`), details toast (PowerShell in `Execute`) |
@@ -244,16 +246,17 @@ NeonDeckPlugin/src/
   Actions/AiCommands.cs          Ask Claude · Polish · TH ⇄ EN
   Actions/ClaudeUsageCommand.cs  Claude Usage (status-line mirror → endpoint fallback, cache, backoff)
   Actions/ClaudeLiveCommand.cs   Claude Live (reads claude-live.json, focuses the terminal)
-  Actions/CodexUsageCommand.cs   Codex Usage (rate_limits from session logs)
+  Actions/CodexUsageCommand.cs   Codex Usage (codex app-server + session logs)
   Actions/DiscordMicCommand.cs   Discord Mic (UIA + posted click, Core Audio fallback)
   Actions/WorkspaceCommands.cs   Theme · Focus · Pomodoro
   Actions/DevCommands.cs         Terminal · Claude Code · Monitor
   Helpers/Neon.cs                Neon face renderer (BitmapBuilder): ring, heartbeat, corner, labels
   Helpers/Win.cs                 PowerShell runner (-EncodedCommand), toast, clipboard, SendKeys, launcher
   Helpers/ClaudeCli.cs           `claude -p` wrapper
-  Helpers/ClaudeUsageClient.cs   Anthropic usage endpoint (fallback)
+  Helpers/ClaudeUsageClient.cs   Anthropic usage endpoint (fallback) + login token renewal
   Helpers/ClaudeLiveReader.cs    Aggregates Claude Code session states
   Helpers/CodexUsageReader.cs    Reads Codex JSONL logs
+  Helpers/CodexAppServerClient.cs Asks Codex for its rate limits (codex app-server, JSON-RPC over stdio)
   Helpers/DiscordUia.cs          Finds and presses Discord's Mute button
   Helpers/MicControl.cs          Core Audio COM interop (IAudioEndpointVolume)
   Helpers/LhmTemps.cs            Reads LibreHardwareMonitor's data.json
@@ -279,6 +282,8 @@ docs/                            Images
 | `plugin 'NeonDeck' is already loaded` at service start | Harmless: the service loads it once from the `.link` file and once from the profile. |
 | A toggle key seems to do nothing | The keypad delivers press and release; the plugin filters that in `NeonCommand.ProcessButtonEvent2`. New keys must override `Execute()`, not `RunCommand()`. |
 | Claude Usage shows `rate limit` | The fallback endpoint returned 429; the key waits out its backoff. With the status line installed (Install › 3) the endpoint is not needed at all. |
+| Claude Usage shows `sign in` | The stored login could not be renewed. Open Claude Code and sign in once; the key recovers on its next poll. |
+| Codex Usage stays at `…` | `codex.exe` was not found or Codex is not signed in. Check `NeonDeck.log` for `codex: using …`; set `codexExe` in `deck.config.json` or run `codex login`. |
 | Claude Live shows `off` | Hooks are not firing. Check `settings.json`, then run `echo {"hook_event_name":"SessionStart","session_id":"t"} \| node ~/.claude/neon-claude-hook.js` and confirm `claude-live.json` appears. Script errors go to `neon-hook-error.log`. |
 | Discord Mic shows `in tray` | Discord has no window. Open it once (minimizing to the taskbar is fine; hiding to the tray is not). |
 | Monitor has no CPU temperature | LibreHardwareMonitor is not running or its web server is off. `http://localhost:8085/data.json` must return JSON in a browser. |
@@ -291,11 +296,12 @@ docs/                            Images
 - If you override `GetCommandImage` and draw your own face, ship `metadata/DefaultIconTemplate.ict` with a single `isFullScreen` image item, or the service overlays the action name on your image.
 - The Node.js SDK (`@logitech/plugin-sdk` 0.1.x) only offers `onKeyDown()` and static SVG icons. Live faces need C#.
 - Chromium/Electron apps (Discord) build no accessibility tree until someone sends `WM_GETOBJECT`, and pressing a button through UIA `Toggle()` activates the window. Posting `WM_LBUTTONDOWN/UP` to the window instead leaves focus alone.
-- Anthropic's usage endpoint (`/api/oauth/usage`) rate‑limits hard. Take the numbers from Claude Code's status line instead.
+- Anthropic's usage endpoint (`/api/oauth/usage`) rate‑limits hard. Take the numbers from Claude Code's status line instead. Its OAuth access token lives 8 hours; renewing it through `platform.claude.com/v1/oauth/token` with Claude Code's own client id and writing the result back works, and Claude Code carries on with the new token (it watches the file and re‑reads on 401).
+- Codex exposes its rate limits through `codex app-server` (`initialize`, then `account/rateLimits/read`): about one second per call, no quota used, no token handling. Much better than scraping session logs.
 
 ## Privacy
 
-Nothing leaves the machine except (1) the AI keys, which run `claude -p` through your own Claude Code CLI, and (2) the optional fallback to Anthropic's usage endpoint with your own login token. All state files live in `%LOCALAPPDATA%\NeonDeck\`.
+Nothing leaves the machine except (1) the AI keys, which run `claude -p` through your own Claude Code CLI, (2) the optional fallback to Anthropic's usage endpoint with your own login token (renewed through Anthropic's token endpoint when expired, exactly as Claude Code does), and (3) Codex Usage, which runs `codex app-server` locally so Codex asks OpenAI for your rate limits with its own login. All state files live in `%LOCALAPPDATA%\NeonDeck\`.
 
 ## License
 

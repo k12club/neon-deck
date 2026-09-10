@@ -12,8 +12,10 @@ namespace Loupedeck.NeonDeckPlugin
     /// Two sources, local first:
     ///  1. %LOCALAPPDATA%\NeonDeck\claude-status.json - written by the Claude Code status line script
     ///     (~/.claude/neon-statusline.js) after every API response. No network, no rate limits.
-    ///  2. The Anthropic usage endpoint, only as a fallback when the local mirror is stale, polled very gently
-    ///     (max every 15 min, exponential backoff on 429, state persisted across reloads).
+    ///  2. The Anthropic usage endpoint, only as a fallback when the local mirror is stale (e.g. right after boot),
+    ///     polled very gently
+    ///     (max every 15 min, exponential backoff on 429, state persisted across reloads). ClaudeUsageClient renews
+    ///     the expired login token itself, so this works right after boot without opening Claude Code.
     /// </summary>
     public sealed class ClaudeUsageCommand : NeonCommand
     {
@@ -286,7 +288,8 @@ namespace Loupedeck.NeonDeckPlugin
                     return;
                 }
                 var parts = File.ReadAllText(BackoffFile).Split('|');
-                if (parts.Length >= 3 && DateTimeOffset.TryParse(parts[0], out var until) && Int32.TryParse(parts[1], out var failures) && until > DateTimeOffset.UtcNow)
+                if (parts.Length >= 3 && DateTimeOffset.TryParse(parts[0], out var until) && Int32.TryParse(parts[1], out var failures) && until > DateTimeOffset.UtcNow
+                    && parts[2] != "token expired") // obsolete reason: the client renews the token itself now
                 {
                     this._nextAllowed = until;
                     this._failures = failures;

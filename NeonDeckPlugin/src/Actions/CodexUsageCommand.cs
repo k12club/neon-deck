@@ -1,25 +1,35 @@
 namespace Loupedeck.NeonDeckPlugin
 {
     using System;
-    using System.IO;
+    using System.Threading;
     using System.Threading.Tasks;
 
     /// <summary>
     /// Codex quota on the key: ring + big number = 5-hour window, label shows the weekly window.
-    /// Reads what Codex last logged in its own session files (no network), so it updates whenever Codex is used.
+    ///
+    /// Two sources, the newest observation wins:
+    ///  1. Codex itself, asked through `codex app-server` (account/rateLimits/read): at plugin load - so the key is
+    ///     right straight after boot without opening Codex - then every 10 minutes while the log reading is older
+    ///     than 5 minutes, and on every press. Codex handles its own login; no quota is consumed.
+    ///  2. Codex's own session logs (rate_limits in the newest .jsonl): instant updates while Codex is being used.
     /// </summary>
     public sealed class CodexUsageCommand : NeonCommand
     {
-        private const Int32 PollEverySeconds = 20;
+        private const Int32 PollEverySeconds = 20;      // session-log change detection
+        private const Int32 LiveEverySeconds = 600;     // ask Codex itself at most this often...
+        private const Int32 LiveIfOlderMinutes = 5;     // ...and only when what we have is older than this
 
         private CodexUsage _usage;
         private String _lastFile;
         private Int64 _lastLength;
         private DateTime _lastWrite;
         private Int32 _busy;
+        private Int32 _liveBusy;
+        private Int32 _beat;
+        private DateTimeOffset _lastChange = DateTimeOffset.MinValue;
 
         public CodexUsageCommand()
-            : base("Codex Usage", "Shows your Codex quota live on the key (5-hour window ring, weekly in the label), read from Codex's own session logs. Press for details.", "Neon Deck | AI")
+            : base("Codex Usage", "Shows your Codex quota live on the key (5-hour window ring, weekly in the label), asked from Codex itself and read from its session logs. Press for details.", "Neon Deck | AI")
         {
         }
 
@@ -27,6 +37,7 @@ namespace Loupedeck.NeonDeckPlugin
         {
             this.Poll(force: true);
             this.Deck.Tick += this.OnTick;
+            _ = this.RefreshLive("startup");
             return base.OnLoad();
         }
 
@@ -39,9 +50,6 @@ namespace Loupedeck.NeonDeckPlugin
             return base.OnUnload();
         }
 
-        private Int32 _beat;
-        private DateTimeOffset _lastChange = DateTimeOffset.MinValue;
-
         private void OnTick(Int32 tick)
         {
             // heartbeat: the key visibly breathes once a second so you can see the meter is alive
@@ -52,12 +60,52 @@ namespace Loupedeck.NeonDeckPlugin
             {
                 this.Poll(force: false);
             }
+            if (tick % LiveEverySeconds == 0)
+            {
+                var u = this._usage;
+                if (u == null || (DateTimeOffset.UtcNow - u.ObservedAt).TotalMinutes >= LiveIfOlderMinutes)
+                {
+                    _ = this.RefreshLive("periodic");
+                }
+            }
         }
+
+        // ---- source 1: Codex itself ----
+
+        private async Task RefreshLive(String why)
+        {
+            if (Interlocked.Exchange(ref this._liveBusy, 1) == 1)
+            {
+                return;
+            }
+            try
+            {
+                var next = await CodexAppServerClient.ReadLive();
+                if (next == null)
+                {
+                    return;
+                }
+                if (this.Apply(next))
+                {
+                    PluginLog.Info($"codex: from codex app-server ({why}) - 5h {next.PrimaryPercent}% · week {next.SecondaryPercent}%");
+                }
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Warning(ex, "codex: live read failed");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref this._liveBusy, 0);
+            }
+        }
+
+        // ---- source 2: the session logs ----
 
         /// <summary>Cheap change detection on the newest session file; parse only when it moved.</summary>
         private void Poll(Boolean force)
         {
-            if (System.Threading.Interlocked.Exchange(ref this._busy, 1) == 1)
+            if (Interlocked.Exchange(ref this._busy, 1) == 1)
             {
                 return;
             }
@@ -86,14 +134,7 @@ namespace Loupedeck.NeonDeckPlugin
                     }
                     return;
                 }
-                var differs = this._usage == null || next.PrimaryPercent != this._usage.PrimaryPercent ||
-                              next.SecondaryPercent != this._usage.SecondaryPercent || next.ObservedAt != this._usage.ObservedAt;
-                this._usage = next;
-                if (differs)
-                {
-                    this._lastChange = DateTimeOffset.UtcNow;
-                    this.Refresh();
-                }
+                this.Apply(next);
             }
             catch (Exception ex)
             {
@@ -101,9 +142,30 @@ namespace Loupedeck.NeonDeckPlugin
             }
             finally
             {
-                System.Threading.Interlocked.Exchange(ref this._busy, 0);
+                Interlocked.Exchange(ref this._busy, 0);
             }
         }
+
+        /// <summary>Take <paramref name="next"/> unless what we already show was observed later. Returns true when the numbers changed.</summary>
+        private Boolean Apply(CodexUsage next)
+        {
+            var cur = this._usage;
+            if (cur != null && next.ObservedAt < cur.ObservedAt)
+            {
+                return false;
+            }
+            var differs = cur == null || next.PrimaryPercent != cur.PrimaryPercent ||
+                          next.SecondaryPercent != cur.SecondaryPercent || next.ObservedAt != cur.ObservedAt;
+            this._usage = next;
+            if (differs)
+            {
+                this._lastChange = DateTimeOffset.UtcNow;
+                this.Refresh();
+            }
+            return differs;
+        }
+
+        // ---- face ----
 
         private static BitmapColor Level(Int32 pct) => pct >= 85 ? Neon.Red : pct >= 60 ? Neon.Amber : Neon.Mint;
 
@@ -112,12 +174,13 @@ namespace Loupedeck.NeonDeckPlugin
             var u = this._usage;
             if (u == null)
             {
+                var present = CodexUsageReader.IsCodexPresent || CodexAppServerClient.CodexExe != null;
                 return new Neon.Face
                 {
                     Icon = "codex_usage.svg",
-                    Accent = CodexUsageReader.IsCodexPresent ? Neon.Mint : Neon.Dim,
+                    Accent = present ? Neon.Mint : Neon.Dim,
                     Title = "Codex",
-                    Subtitle = CodexUsageReader.IsCodexPresent ? "no data" : "not found",
+                    Subtitle = present ? "…" : "not found",
                     Progress = 0,
                 };
             }
@@ -143,12 +206,15 @@ namespace Loupedeck.NeonDeckPlugin
             this.RunAsync("Codex usage", async () =>
             {
                 this.Poll(force: true);
+                await this.RefreshLive("press");
                 var u = this._usage;
                 if (u == null)
                 {
-                    await Win.Toast("Codex usage", CodexUsageReader.IsCodexPresent
-                        ? "No rate-limit data in Codex session logs yet - run one Codex turn and it will appear."
-                        : "Codex is not installed for this user (no %USERPROFILE%\\.codex\\sessions).");
+                    await Win.Toast("Codex usage", CodexAppServerClient.CodexExe != null
+                        ? "Codex did not answer - is it signed in? Open Codex once and run `codex login` if needed."
+                        : CodexUsageReader.IsCodexPresent
+                            ? "No rate-limit data in Codex session logs yet - run one Codex turn and it will appear."
+                            : "Codex is not installed for this user (no codex.exe and no %USERPROFILE%\\.codex\\sessions).");
                     return;
                 }
                 var age = DateTimeOffset.UtcNow - u.ObservedAt;
@@ -157,7 +223,7 @@ namespace Loupedeck.NeonDeckPlugin
                 {
                     $"5-hour window: {u.PrimaryPercent}%  · resets in {ResetsIn(u.PrimaryResetsAt)} ({Local(u.PrimaryResetsAt)})",
                     $"Week: {u.SecondaryPercent}%  · resets {Local(u.SecondaryResetsAt, withDay: true)}",
-                    $"as reported by Codex {ageTxt}",
+                    (u.Live ? "asked from Codex" : "as reported by Codex's session log") + $" {ageTxt}" + (String.IsNullOrEmpty(u.PlanType) ? "" : $" · {u.PlanType} plan"),
                 };
                 await Win.Toast($"Codex usage · {u.PrimaryPercent}% of 5h · {u.SecondaryPercent}% of week", String.Join("\n", lines), silent: true);
             });
