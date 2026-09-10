@@ -58,6 +58,14 @@ namespace Loupedeck.NeonDeckPlugin
         protected override BitmapImage GetCommandImage(String actionParameter, PluginImageSize imageSize)
         {
             var size = imageSize == PluginImageSize.None ? PluginImageSize.Width90 : imageSize;
+            if (Panel.Active)
+            {
+                var shared = Panel.Tile(this, size, this.BuildFace); // the nine keys as one screen while a scene plays
+                if (shared != null)
+                {
+                    return shared;
+                }
+            }
             return Neon.Draw(size, this.BuildFace());
         }
 
@@ -65,6 +73,9 @@ namespace Loupedeck.NeonDeckPlugin
         protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) => null;
 
         protected void Refresh() => this.ActionImageChanged();
+
+        /// <summary>Redraw from outside the key (used by <see cref="Panel"/>).</summary>
+        public void RefreshFace() => this.ActionImageChanged();
 
         protected NeonDeckPlugin Deck => this.Plugin as NeonDeckPlugin ?? NeonDeckPlugin.Instance;
 

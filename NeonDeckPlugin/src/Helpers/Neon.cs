@@ -74,7 +74,7 @@ namespace Loupedeck.NeonDeckPlugin
         }
 
         /// <summary>Draw a face for the given device image size.</summary>
-        public static BitmapImage Draw(PluginImageSize imageSize, Face f)
+        public static BitmapImage Draw(PluginImageSize imageSize, Face f, BitmapColor? overlay = null)
         {
             using var b = new BitmapBuilder(imageSize);
             var w = b.Width;
@@ -182,6 +182,10 @@ namespace Loupedeck.NeonDeckPlugin
                 b.DrawText(title, pad / 2, h - titleH - pad / 2, w - pad, titleH, Text, titleFont, lineHeight, spaceHeight, null);
             }
 
+            if (overlay.HasValue && overlay.Value.A > 0)
+            {
+                b.FillRectangle(0, 0, w, h, overlay.Value); // scene tint (quota alert pulse, splash fade-in)
+            }
             var img = b.ToImage();
             Snapshot(f, imageSize, img);
             return img;

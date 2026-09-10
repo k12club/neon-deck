@@ -31,6 +31,10 @@ namespace Loupedeck.NeonDeckPlugin
         [JsonPropertyName("discordMuteHotkey")]
         public String DiscordMuteHotkey { get; set; } = "";
 
+        /// <summary>Play the boot splash (Clawd walks across all nine keys) when the plugin loads.</summary>
+        [JsonPropertyName("bootSplash")]
+        public Boolean BootSplash { get; set; } = true;
+
         /// <summary>Path to codex.exe for the live Codex quota. Empty = auto-detect (Codex installer folder, PATH, npm global).</summary>
         [JsonPropertyName("codexExe")]
         public String CodexExe { get; set; } = "";

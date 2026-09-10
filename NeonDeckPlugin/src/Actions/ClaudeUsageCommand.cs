@@ -61,6 +61,7 @@ namespace Loupedeck.NeonDeckPlugin
         protected override Boolean OnLoad()
         {
             this.LoadCache();
+            this.NoteLimit(); // baseline, so a cached 100 % does not re-alert on every reload
             this.LoadBackoff();
             this.ReadMirror(force: true);
             this.Deck.Tick += this.OnTick;
@@ -165,6 +166,7 @@ namespace Loupedeck.NeonDeckPlugin
                 this._source = "Claude Code";
                 this._lastError = null; // fresh local numbers make the endpoint problem irrelevant to the face
                 this.SaveCache();
+                this.NoteLimit();
                 if (changed)
                 {
                     PluginLog.Info($"usage: from Claude Code status line - 5h {five?.Percent}% · week {week?.Percent}%");
@@ -220,6 +222,7 @@ namespace Loupedeck.NeonDeckPlugin
                     this._failures = 0;
                     this._nextAllowed = DateTimeOffset.MinValue;
                     this.SaveCache();
+                    this.NoteLimit();
                     this.SaveBackoff();
                     if (changed)
                     {
@@ -242,6 +245,21 @@ namespace Loupedeck.NeonDeckPlugin
             {
                 Interlocked.Exchange(ref this._fetching, 0);
             }
+        }
+
+        // ---- 100 % crossing -> the whole panel pulses red once ----
+
+        private Int32 _lastPct = -1;
+
+        private void NoteLimit()
+        {
+            var u = this._usage;
+            var pct = Math.Max(u?.Session?.Percent ?? -1, u?.Week?.Percent ?? -1);
+            if (this._lastPct >= 0 && this._lastPct < 100 && pct >= 100)
+            {
+                Panel.Alert(Neon.Red, $"Claude quota hit {pct}%");
+            }
+            this._lastPct = pct;
         }
 
         // ---- persistence ----

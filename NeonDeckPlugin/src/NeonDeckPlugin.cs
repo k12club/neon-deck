@@ -51,6 +51,12 @@ namespace Loupedeck.NeonDeckPlugin
 
             this._ticker = new Timer(_ => this.OnTick(), null, 1000, 1000);
 
+            if (DeckConfig.Current.BootSplash)
+            {
+                // the nine keys as one screen: Clawd walks across the panel, then the keys fade in
+                _ = System.Threading.Tasks.Task.Delay(1200).ContinueWith(_ => Panel.Play(new SplashScene()));
+            }
+
             if (DeckConfig.Current.DebugSnapshots)
             {
                 this.StartTriggerWatcher();
@@ -83,6 +89,7 @@ namespace Loupedeck.NeonDeckPlugin
         public override void Unload()
         {
             this.Lifecycle("Unload");
+            Panel.Stop(refresh: false);
             this._ticker?.Dispose();
             this._ticker = null;
             this._trigger?.Dispose();
@@ -135,6 +142,16 @@ namespace Loupedeck.NeonDeckPlugin
                 {
                     foreach (var c in all) { c.RenderForSnapshot(PluginImageSize.Width116); }
                     PluginLog.Info("trigger: snapshots re-rendered");
+                    return;
+                }
+                if (name.Equals("splash", StringComparison.OrdinalIgnoreCase))
+                {
+                    Panel.Play(new SplashScene());
+                    return;
+                }
+                if (name.Equals("alert", StringComparison.OrdinalIgnoreCase))
+                {
+                    Panel.Play(new AlertScene(Neon.Red));
                     return;
                 }
                 var cmd = Array.Find(all, c => c.GetType().Name.Equals(name, StringComparison.OrdinalIgnoreCase));

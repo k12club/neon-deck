@@ -2,6 +2,8 @@
 
 A [Logi Actions SDK](https://logitech.github.io/actions-sdk-docs/) plugin (C#, .NET 10) that turns the nine LCD keys of the Logitech MX Creative Keypad into a neon‑styled dashboard for people who live in Claude Code, Codex and Discord: quota meters with reset countdowns, a physical status light for Claude Code, a Discord mic toggle that needs no keybinds, a Pomodoro with an on‑key countdown, a CPU/RAM/GPU monitor with temperatures, and one‑press dev launchers. Every key face is drawn live by the plugin.
 
+![Boot splash: Clawd walks across all nine keys, then the keys fade in](docs/splash.gif)
+
 ![The nine key faces as rendered by the plugin](docs/deck.png)
 
 *Actual 116 px key faces rendered by the plugin while Claude was working.*
@@ -36,6 +38,10 @@ Also available but not on the default page (drag them onto a key in Options+): *
 ![Clawd idle animation frames](docs/clawd-frames.png)
 
 The quota keys and Claude Live carry a small breathing dot in the top‑right corner so you can see they are alive, and their frame flashes for three seconds whenever a new number arrives.
+
+The nine keys also act as **one screen**: when the plugin loads, Clawd strolls across the whole panel (head in the middle row, feet in the bottom row, the bezels cut through him and your eye fills the gaps), the floor lights up behind him, the deck name and the time fade in on the top row, then the keys fade in. When a Claude or Codex quota hits 100 %, the whole panel pulses red three times on top of the normal faces. `bootSplash: false` in `deck.config.json` turns the splash off.
+
+![Quota hit: the whole panel pulses red on top of the key faces](docs/alert.gif)
 
 ---
 
@@ -150,6 +156,8 @@ To remove: `Unregister-ScheduledTask 'LibreHardwareMonitor (Neon Deck)'` then `w
   "claudeModel": "",
   "claudeCwd": "C:\\Users\\<you>\\AppData\\Local\\NeonDeck",
   "discordMuteHotkey": "",
+  "codexExe": "",
+  "bootSplash": true,
   "debugSnapshots": false
 }
 ```
@@ -161,6 +169,7 @@ To remove: `Unregister-ScheduledTask 'LibreHardwareMonitor (Neon Deck)'` then `w
 | `claudeModel` | Model for the AI keys; empty = CLI default, `haiku` for the fastest replies |
 | `claudeCwd` | Working directory for `claude -p` (neutral, so no project CLAUDE.md leaks into prompts) |
 | `discordMuteHotkey` | No longer used; kept for compatibility |
+| `bootSplash` | Play the boot splash (Clawd walks across all nine keys) whenever the plugin loads |
 | `codexExe` | Path to `codex.exe` for the live Codex quota; empty = auto‑detect (Codex installer folder, PATH, npm global) |
 | `debugSnapshots` | `true` saves every rendered face to `snapshots\*.png` and enables the dev harness (see [testing](#testing-without-the-device)) |
 
@@ -191,6 +200,8 @@ The palette lives at the top of `src/Helpers/Neon.cs`: `Bg`, `Text`, `Dim`, `Cya
 
 ### Face layout
 
+**Whole‑panel scenes.** `Panel` (`src/Helpers/Panel.cs`) treats the nine keys as one 480 × 480 screen: the MX Creative Keypad is a single LCD whose key windows are 118 px squares starting at (23, 6) with a 158 px pitch. While a `Panel.Scene` plays, every key returns its window of one shared frame (or its own face under a tint), redrawn by a timer at the scene's `Fps`; which key sits in which window is read from the Logi profile, so rearranging keys in Options+ needs no code change. `SplashScene` and `AlertScene` in `src/Helpers/PanelScenes.cs` are the two shipped scenes; to add one, subclass `Panel.Scene` (`Duration`, `Fps`, `DrawFrame`, `Overlay`) and call `Panel.Play(new MyScene())`.
+
 `Neon.Draw()` in `src/Helpers/Neon.cs` is the single renderer: top glow bar, corner text (`Corner`), ring (`Progress`), icon, big value (`Subtitle`), bottom label (`Title`), breathing dot (`Heartbeat`), highlighted frame (`Active`). Row heights (0.17–0.20 of the key), icon size and ring stroke are all set there.
 
 ### Which key goes where
@@ -205,6 +216,7 @@ Drag in Options+ or edit `ProfileInfo.json` as in [Install › Key layout](#2-ke
 | Claude Usage | `Actions/ClaudeUsageCommand.cs`, `Helpers/ClaudeUsageClient.cs` | Mirror poll `LocalPollSeconds`, fallback endpoint interval `EndpointEverySeconds` (keep ≥ 900), backoff, token renewal margin `RenewAhead` |
 | Claude Live | `Actions/ClaudeLiveCommand.cs`, `Helpers/ClaudeLiveReader.cs` | Green glow duration `DoneGlow`, session age `SessionTtl`, terminal window regex `ClaudeTitle`, toast on needs_input |
 | Codex Usage | `Actions/CodexUsageCommand.cs`, `Helpers/CodexAppServerClient.cs`, `Helpers/CodexUsageReader.cs` | Live ask interval `LiveEverySeconds` / `LiveIfOlderMinutes`, log scan interval `PollEverySeconds`, number of newest log files checked (`Take(5)`) |
+| Splash / quota alert | `Helpers/PanelScenes.cs` | Walk length `Walk`, fade `Reveal`, Clawd size, pulse count and period in `AlertScene`; frame rate per scene (`Fps`) |
 | Discord Mic | `Actions/DiscordMicCommand.cs`, `Helpers/DiscordUia.cs` | Localized button names (`MuteNames`), state poll rate (`tick % 3`) |
 | Pomodoro | `Actions/WorkspaceCommands.cs` | Length from `pomodoroMinutes`, red threshold (`left.TotalMinutes < 5`) |
 | Monitor | `Actions/DevCommands.cs`, `Helpers/LhmTemps.cs` | Sensor names (`Tctl`/`Package`, `GPU Core`), temperature poll (`tick % 10`), details toast (PowerShell in `Execute`) |
@@ -230,6 +242,8 @@ Set `"debugSnapshots": true`, reload the plugin, then:
 $d = "$env:LOCALAPPDATA\NeonDeck"
 Set-Content "$d\trigger.txt" 'PomodoroCommand'   # = press that key once
 Set-Content "$d\trigger.txt" 'snapshot'          # = re-render every face into snapshots\*.png
+Set-Content "$d\trigger.txt" 'splash'            # = play the boot splash (frames land in snapshots\panel_NN.png, panelview_NN.png, tile_N_*.png)
+Set-Content "$d\trigger.txt" 'alert'             # = play the red quota-hit pulse
 ```
 
 `snapshots\<icon>_Width116.png` is the face at device size. The plugin log is `%LOCALAPPDATA%\Logi\LogiPluginService\Logs\plugin_logs\NeonDeck.log`. Set the flag back to `false` afterwards, since this mode writes a file on every redraw.
@@ -251,6 +265,8 @@ NeonDeckPlugin/src/
   Actions/WorkspaceCommands.cs   Theme · Focus · Pomodoro
   Actions/DevCommands.cs         Terminal · Claude Code · Monitor
   Helpers/Neon.cs                Neon face renderer (BitmapBuilder): ring, heartbeat, corner, labels
+  Helpers/Panel.cs               The nine keys as one 480x480 screen: scenes, shared frame, layout from the Logi profile
+  Helpers/PanelScenes.cs         Boot splash (Clawd walks across the panel) and the quota-hit alert pulse
   Helpers/Win.cs                 PowerShell runner (-EncodedCommand), toast, clipboard, SendKeys, launcher
   Helpers/ClaudeCli.cs           `claude -p` wrapper
   Helpers/ClaudeUsageClient.cs   Anthropic usage endpoint (fallback) + login token renewal
@@ -295,6 +311,7 @@ docs/                            Images
 - The keypad sends `RunCommand` for both press and release (~200 ms apart), so toggle keys undo themselves. Override `ProcessButtonEvent2` and act on `Press` only.
 - If you override `GetCommandImage` and draw your own face, ship `metadata/DefaultIconTemplate.ict` with a single `isFullScreen` image item, or the service overlays the action name on your image.
 - The Node.js SDK (`@logitech/plugin-sdk` 0.1.x) only offers `onKeyDown()` and static SVG icons. Live faces need C#.
+- The keypad is one 480 × 480 LCD; the key windows are 118 px at (23, 6) with a 158 px pitch (numbers from Julusian's `node-logitech-mx-creative-console`). Hand every key its window of one shared frame and things move across the bezels; nine keys at 10 fps through the Plugin Service kept up without dropping frames.
 - Chromium/Electron apps (Discord) build no accessibility tree until someone sends `WM_GETOBJECT`, and pressing a button through UIA `Toggle()` activates the window. Posting `WM_LBUTTONDOWN/UP` to the window instead leaves focus alone.
 - Anthropic's usage endpoint (`/api/oauth/usage`) rate‑limits hard. Take the numbers from Claude Code's status line instead. Its OAuth access token lives 8 hours; renewing it through `platform.claude.com/v1/oauth/token` with Claude Code's own client id and writing the result back works, and Claude Code carries on with the new token (it watches the file and re‑reads on 401).
 - Codex exposes its rate limits through `codex app-server` (`initialize`, then `account/rateLimits/read`): about one second per call, no quota used, no token handling. Much better than scraping session logs.

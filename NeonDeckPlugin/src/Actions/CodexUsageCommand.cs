@@ -25,6 +25,7 @@ namespace Loupedeck.NeonDeckPlugin
         private DateTime _lastWrite;
         private Int32 _busy;
         private Int32 _liveBusy;
+        private Int32 _lastPct = -1;                    // for the 100 % crossing alert
         private Int32 _beat;
         private DateTimeOffset _lastChange = DateTimeOffset.MinValue;
 
@@ -157,6 +158,12 @@ namespace Loupedeck.NeonDeckPlugin
             var differs = cur == null || next.PrimaryPercent != cur.PrimaryPercent ||
                           next.SecondaryPercent != cur.SecondaryPercent || next.ObservedAt != cur.ObservedAt;
             this._usage = next;
+            var pct = Math.Max(next.PrimaryPercent, next.SecondaryPercent);
+            if (this._lastPct >= 0 && this._lastPct < 100 && pct >= 100)
+            {
+                Panel.Alert(Neon.Red, $"Codex quota hit {pct}%"); // the whole panel pulses red once, on the crossing only
+            }
+            this._lastPct = pct;
             if (differs)
             {
                 this._lastChange = DateTimeOffset.UtcNow;
